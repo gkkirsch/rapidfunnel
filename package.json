@@ -1,0 +1,25 @@
+{
+  "name": "rapidfunnel-universal-tracker",
+  "version": "0.1.0",
+  "description": "A vanilla JS script to track Wistia videos, forms, and CTAs for RapidFunnel",
+  "main": "src/rapidfunnel-tracker.js",
+  "scripts": {
+    "build": "mkdir -p dist && terser src/rapidfunnel-tracker.js --compress --mangle --output dist/rapidfunnel-tracker.min.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": [
+    "rapidfunnel",
+    "tracking",
+    "wistia",
+    "analytics"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "terser": "^5.30.3"
+  }
+} 
