@@ -406,8 +406,20 @@
 
       // Regex patterns for common names (case-insensitive)
       const patterns = {
-        firstName: [/first.?name/i, /fname/i],
-        lastName: [/last.?name/i, /lname/i, /surname/i],
+        firstName: [
+          /first.?name/i,
+          /fname/i,
+          /first_name/i,
+          /first-name/i,
+          /firstname/i,
+        ],
+        lastName: [
+          /last.?name/i,
+          /lname/i,
+          /surname/i,
+          /last_name/i,
+          /last-name/i,
+        ],
         name: [/^name$/i, /full.?name/i, /your.?name/i], // Combined name
         email: [/e.?mail/i], // Check if type="email" wasn't found
         phone: [/phone/i, /mobile/i, /contact.?number/i], // Check if type="tel" wasn't found
@@ -572,132 +584,143 @@
 
     // --- Form Initialization Logic ---
 
-    const allForms = document.querySelectorAll("form");
-    if (allForms.length === 0) {
-      console.log("No forms found on the page.");
-      return;
-    }
     console.log(
-      `Found ${allForms.length} form(s). Attempting to identify trackable contact forms...`
+      "Initializing Form Tracking with event delegation (listening on document)."
     );
-    let trackedFormsCount = 0;
 
-    allForms.forEach((form) => {
+    document.addEventListener("submit", async (event) => {
+      // Check if the submission target is a form
+      if (!(event.target instanceof HTMLFormElement)) {
+        return; // Not a form submission, ignore
+      }
+
+      const form = event.target;
+      console.log(
+        "Submit event caught by delegate listener for form:",
+        form.id || "Unnamed form"
+      );
+
       const identifiedFields = findFormFields(form);
 
       // Only track if at least email OR phone was found
       if (identifiedFields) {
-        trackedFormsCount++;
         console.log(
-          `Attaching submit listener to form (found email/phone):`,
+          "Trackable form identified (has email/phone). Processing submission..."
+        );
+        event.preventDefault(); // Prevent default form submission ONLY for trackable forms
+        console.log(
+          "Default submission prevented for:",
           form.id || "Unnamed form"
         );
 
-        form.addEventListener("submit", async (event) => {
-          event.preventDefault();
-          console.log("Tracked form submitted:", form.id || "Unnamed form");
+        // Use the identified fields
+        const {
+          firstNameInput,
+          lastNameInput,
+          nameInput,
+          emailInput,
+          phoneInput,
+        } = identifiedFields;
 
-          // Use the identified fields
-          const {
-            firstNameInput,
-            lastNameInput,
-            nameInput,
-            emailInput,
-            phoneInput,
-          } = identifiedFields;
+        // --- Validation (only validate found fields) ---
+        const emailValue = emailInput?.value?.trim();
+        const phoneValue = phoneInput?.value?.trim();
 
-          // --- Validation (only validate found fields) ---
-          const emailValue = emailInput?.value?.trim();
-          const phoneValue = phoneInput?.value?.trim();
-
-          // Must have at least email or phone value to submit
-          if (!emailValue && !phoneValue) {
-            console.warn(
-              "Form submission stopped: Missing both email and phone value."
-            );
-            return;
-          }
-          // Validate email format if present
-          if (emailValue && !/\S+@\S+\.\S+/.test(emailValue)) {
-            return;
-          }
-          // Add other specific validations if needed (e.g., phone format)
-
-          // --- Construct Payload (using only available fields) ---
-          let firstName = "";
-          let lastName = "";
-
-          if (firstNameInput?.value && lastNameInput?.value) {
-            firstName = firstNameInput.value.trim();
-            lastName = lastNameInput.value.trim();
-          } else if (nameInput?.value) {
-            const nameParts = nameInput.value.trim().split(/\s+/);
-            firstName = nameParts.shift() || "";
-            lastName = nameParts.join(" ");
-          } else if (firstNameInput?.value) {
-            // Only first name found
-            firstName = firstNameInput.value.trim();
-          } else if (lastNameInput?.value) {
-            // Only last name found (use as first?)
-            firstName = lastNameInput.value.trim(); // Or should this be lastName?
-          }
-
-          const payload = {};
-          if (firstName) payload.firstName = firstName;
-          if (lastName) payload.lastName = lastName;
-          if (emailValue) payload.email = emailValue;
-          if (phoneValue) payload.phone = phoneValue;
-
-          // Get optional campaign/label IDs
-          payload.campaign = window.rapidFunnelCampaignId || 0;
-          payload.contactTag = window.rapidFunnelLabelId || 0;
-
-          // Construct the URL-encoded formData string
-          const formDataString = new URLSearchParams(payload).toString();
-
-          // Check for essential URL params
-          if (!params.userId || !params.resourceId) {
-            console.error(
-              "Cannot submit form: Missing userId or resourceId in URL."
-            );
-            return;
-          }
-          const resourceId = Number(params.resourceId);
-          const senderId = Number(params.userId);
-
-          // Disable submit button
-          const submitButton = form.querySelector('[type="submit"]');
-          if (submitButton) submitButton.disabled = true;
-
-          // Call the helper to submit the data
-          const newContactId = await submitContactForm(
-            formDataString,
-            resourceId,
-            senderId,
-            form
+        // Must have at least email or phone value to submit
+        if (!emailValue && !phoneValue) {
+          console.warn(
+            "Form submission stopped: Missing both email and phone value."
           );
+          // Re-enable submit button if validation fails *before* API call attempt
+          const submitButton = form.querySelector('[type="submit"]');
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+        // Validate email format if present
+        if (emailValue && !/\S+@\S+\.\S+/.test(emailValue)) {
+          console.warn("Form submission stopped: Invalid email format.");
+          // Re-enable submit button if validation fails *before* API call attempt
+          const submitButton = form.querySelector('[type="submit"]');
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+        // Add other specific validations if needed (e.g., phone format)
 
-          // Re-enable button logic remains the same
-          if (
-            submitButton &&
-            (!newContactId ||
-              (!window.rapidFunnelNextPage &&
-                !document
-                  .getElementById("contactFormSubmitContainer")
-                  ?.getAttribute("data-redirect")))
-          ) {
-            console.log("Re-enabling submit button.");
-            submitButton.disabled = false;
-          }
-        }); // End event listener
-      } // End if(identifiedFields)
-    }); // End forEach(form)
+        // --- Construct Payload (using only available fields) ---
+        let firstName = "";
+        let lastName = "";
 
-    if (trackedFormsCount === 0) {
-      console.log(
-        "Could not automatically identify any forms with at least an email or phone field."
-      );
-    }
+        if (firstNameInput?.value && lastNameInput?.value) {
+          firstName = firstNameInput.value.trim();
+          lastName = lastNameInput.value.trim();
+        } else if (nameInput?.value) {
+          const nameParts = nameInput.value.trim().split(/\s+/);
+          firstName = nameParts.shift() || "";
+          lastName = nameParts.join(" ");
+        } else if (firstNameInput?.value) {
+          // Only first name found
+          firstName = firstNameInput.value.trim();
+        } else if (lastNameInput?.value) {
+          // Only last name found (use as first?)
+          firstName = lastNameInput.value.trim(); // Or should this be lastName?
+        }
+
+        const payload = {};
+        if (firstName) payload.firstName = firstName;
+        if (lastName) payload.lastName = lastName;
+        if (emailValue) payload.email = emailValue;
+        if (phoneValue) payload.phone = phoneValue;
+
+        // Get optional campaign/label IDs
+        payload.campaign = window.rapidFunnelCampaignId || 0;
+        payload.contactTag = window.rapidFunnelLabelId || 0;
+
+        // Construct the URL-encoded formData string
+        const formDataString = new URLSearchParams(payload).toString();
+
+        // Check for essential URL params
+        if (!params.userId || !params.resourceId) {
+          console.error(
+            "Cannot submit form: Missing userId or resourceId in URL."
+          );
+          // Don't re-enable button here as we didn't disable it yet
+          return;
+        }
+        const resourceId = Number(params.resourceId);
+        const senderId = Number(params.userId);
+
+        // Disable submit button *before* API call
+        const submitButton = form.querySelector('[type="submit"]');
+        if (submitButton) submitButton.disabled = true;
+
+        // Call the helper to submit the data
+        const newContactId = await submitContactForm(
+          formDataString,
+          resourceId,
+          senderId,
+          form
+        );
+
+        // Re-enable button ONLY if submission failed OR there's no redirect planned
+        if (
+          submitButton &&
+          (!newContactId ||
+            (!window.rapidFunnelNextPage &&
+              !document
+                .getElementById("contactFormSubmitContainer")
+                ?.getAttribute("data-redirect")))
+        ) {
+          console.log("Re-enabling submit button.");
+          submitButton.disabled = false;
+        }
+      } else {
+        console.log(
+          "Form submitted but not tracked (missing email/phone):",
+          form.id || "Unnamed form"
+        );
+        // Allow default submission for non-tracked forms
+      }
+    }); // End document event listener
   }
 
   // --- Main Execution ---
