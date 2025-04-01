@@ -701,7 +701,9 @@
   }
 
   // --- Main Execution ---
-  document.addEventListener("DOMContentLoaded", () => {
+
+  function runInitializationLogic() {
+    console.log("Running initialization logic...");
     const params = getUrlParams();
     console.log("RapidFunnel Tracker Initialized. Params:", params);
 
@@ -717,5 +719,55 @@
     initializeCtaTracking(params);
     initializeVideoTracking(params);
     initializeFormTracking(params);
-  });
+  }
+
+  // Check if DOM is already ready or wait for body
+  if (
+    document.readyState === "complete" ||
+    (document.readyState !== "loading" && !document.documentElement.doScroll)
+  ) {
+    // Document is already interactive or complete
+    console.log(
+      "DOM ready on initial check (readyState). Running initializers."
+    );
+    runInitializationLogic();
+  } else if (document.body) {
+    // Body already parsed, likely safe to run
+    console.log("DOM body found on initial check. Running initializers.");
+    runInitializationLogic();
+  } else {
+    // Body not ready, poll or use fallback listener
+    console.log("DOM not ready, setting up interval check for document.body.");
+    let checkInterval = null;
+    let checksLeft = 50; // Safety limit: 50 * 100ms = 5 seconds
+
+    const checkBody = () => {
+      checksLeft--;
+      if (document.body || checksLeft <= 0) {
+        console.log(
+          checksLeft > 0
+            ? "document.body found by polling."
+            : "Polling timeout reached."
+        );
+        clearInterval(checkInterval);
+        // Ensure we run only once, even if DOMContentLoaded also fires somehow
+        if (!window.rfTrackerInitialized) {
+          window.rfTrackerInitialized = true;
+          runInitializationLogic();
+        }
+      }
+    };
+
+    // Also add DOMContentLoaded as a primary fallback, just in case it works sometimes
+    document.addEventListener("DOMContentLoaded", () => {
+      console.log("DOMContentLoaded event fired (fallback).");
+      clearInterval(checkInterval); // Stop polling if event fires
+      if (!window.rfTrackerInitialized) {
+        window.rfTrackerInitialized = true;
+        runInitializationLogic();
+      }
+    });
+
+    checkInterval = setInterval(checkBody, 100);
+  }
 })();
