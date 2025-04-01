@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RapidFunnel Tracker Test (CDN)</title>
+    <!-- Note: No jQuery here! -->
+    <!-- Using CDN script -->
+    <script src="https://gkkirsch.github.io/rapidfunnel/rapidfunnel-tracker.min.js" defer></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .section { margin-bottom: 30px; border: 1px solid #ccc; padding: 15px; border-radius: 8px; }
+        h2 { margin-top: 0; }
+        /* Add basic form/button styling if needed for testing */
+    </style>
+</head>
+<body>
+
+    <h1>RapidFunnel Universal Tracker Test Page (CDN Version)</h1>
+    <p>Append <code>?userId=123&resourceId=456&contactId=789</code> to the URL to test parameter extraction.</p>
+
+    <div class="section" id="video-section">
+        <h2>Video Tracking Test</h2>
+        <!-- Placeholder for Wistia video embed -->
+        <p><i>(Wistia video embed will go here)</i></p>
+        <!-- Example from docs (needs videoId) -->
+        <!--
+        <div class="wistia_responsive_padding" style="padding:56.25% 0 0 0; position:relative;">
+          <div class="wistia_responsive_wrapper" style="height:100%; left:0; position:absolute; top:0; width:100%; border-radius:16px; overflow:hidden;">
+            <div
+              class="wistia_embed wistia_async_YOUR_VIDEO_ID seo=true videoFoam=true"
+              style="height:100%; position:relative; width:100%; border-radius:16px; overflow:hidden;"
+              data-autoPlay="false"
+              id="wistia_embed_YOUR_VIDEO_ID">
+              <div
+                class="wistia_swatch"
+                style="height:100%; left:0; opacity:1; overflow:hidden; position:absolute; top:0; transition:opacity 200ms; width:100%; cursor:pointer; border-radius:16px;"
+                onclick="this.style.display='none'; this.parentNode.querySelector('.wistia_embed').click();">
+                <img
+                  src="https://fast.wistia.com/embed/medias/YOUR_VIDEO_ID/swatch"
+                  style="filter:blur(0); height:100%; object-fit:cover; width:100%; border-radius:16px;"
+                  alt="Video Thumbnail"
+                  aria-hidden="true"
+                  id="wistia_thumbnail_YOUR_VIDEO_ID">
+              </div>
+            </div>
+          </div>
+        </div>
+        <script src="https://fast.wistia.com/embed/medias/YOUR_VIDEO_ID.jsonp" async></script>
+        <script src="https://fast.wistia.com/assets/external/E-v1.js" async></script>
+        -->
+    </div>
+
+    <div class="section" id="form-section">
+        <h2>Contact Form Tracking Test</h2>
+        <!-- Example form structure based on docs -->
+        <div class="form-container" id="contactFormContainer">
+            <form action="#" method="POST">
+                <div class="form-item">
+                    <label for="contactFirstName">First Name:</label>
+                    <input type="text" id="contactFirstName" class="contactfirstname" required>
+                </div>
+                <div class="form-item">
+                    <label for="contactLastName">Last Name:</label>
+                    <input type="text" id="contactLastName" class="contactlastname" required>
+                </div>
+                <div class="form-item">
+                    <label for="contactEmail">Email:</label>
+                    <input type="email" id="contactEmail" class="contactemail" required>
+                </div>
+                <div class="form-item">
+                    <label for="contactPhone">Phone:</label>
+                    <input type="tel" id="contactPhone" class="contactphone">
+                </div>
+                <button type="submit" class="submit-btn">SUBMIT</button>
+            </form>
+        </div>
+         <div id="contactFormSubmitContainer" style="display: none;" data-redirect=""></div> <!-- Needed by example logic -->
+
+    </div>
+
+    <div class="section" id="cta-section">
+        <h2>CTA Button Tracking Test</h2>
+        <!-- Example CTA button structure based on docs -->
+        <a id="ctaButtonTest1" class="cta-button" target="_blank" href="https://example.com/redirect1" data-description="Test CTA Button 1">Click Me (New Tab)</a>
+        <br><br>
+        <a id="ctaButtonTest2" class="cta-button" target="_self" href="https://example.com/redirect2" data-description="Test CTA Button 2">Click Me (Same Tab)</a>
+        <br><br>
+         <a id="anotherButton" href="#">Non-Tracked Button</a>
+
+    </div>
+
+</body>
+</html> 
