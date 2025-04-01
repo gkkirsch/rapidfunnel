@@ -1,1 +1,14 @@
- 
+# Node dependencies
+node_modules/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Optional ignores (logs, caches, etc. - add more as needed)
+*.log
+.env*
+.cache
+
+# IMPORTANT: Do NOT ignore the dist directory for GitHub Pages
+# dist/
