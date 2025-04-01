@@ -143,7 +143,7 @@
     bodyParams.append("resourceId", resourceId);
     bodyParams.append("senderId", senderId);
     // Determine sentFrom value
-    let sentFromValue = window.location.href;
+    let sentFromValue = "customPage";
     if (sentFromValue.startsWith("file://")) {
       sentFromValue = "customPage"; // Use 'customPage' for local files
     }
