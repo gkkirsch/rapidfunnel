@@ -18,16 +18,33 @@ The goal is to provide a lightweight, dependency-free script that website owners
 
 Follow these steps to add the RapidFunnel tracker to your website:
 
-1.  **Include Script in HTML:** Add the following `<script>` tag within the `<head>` section of your HTML pages.
+1.  **Include Script in HTML:** Add the following `<script>` tag to your HTML pages. The recommended placement is inside the `<head>` section using the `defer` attribute.
 
     ```html
-    <script
-      src="https://gkkirsch.github.io/rapidfunnel/rapidfunnel-tracker.min.js"
-      defer
-    ></script>
+    <head>
+      <meta charset="UTF-8">
+      <title>Your Page Title</title>
+      <!-- Recommended: Add this line inside the <head> tag -->
+      <script src="https://gkkirsch.github.io/rapidfunnel/rapidfunnel-tracker.min.js" defer></script>
+      <!-- Other head elements like styles, meta tags... -->
+    </head>
+    <body> ... </body>
+    </html>
     ```
 
     _Using `defer` allows the script to load without blocking page rendering and ensures it executes after the HTML is parsed._
+
+    **Alternative Placement:** If you encounter issues with the `defer` attribute in your specific environment, you can place the script tag without `defer` at the very end of the `<body>` section instead:
+
+    ```html
+    <body>
+      <!-- Your page content... -->
+
+      <!-- Alternative: Add script just before closing body tag -->
+      <script src="https://gkkirsch.github.io/rapidfunnel/rapidfunnel-tracker.min.js"></script>
+    </body>
+    </html>
+    ```
 
 2.  **Ensure URL Parameters:** This is crucial. The tracking script **requires** the page URL to contain `userId` and `resourceId` parameters when the page is loaded via a RapidFunnel share. The `contactId` parameter is also used if present (for video/CTA tracking context).
     _Example URL:_ `https://yourwebsite.com/landing-page?userId=12345&resourceId=67890&contactId=112233`

@@ -3,6 +3,7 @@
 
 (function () {
   "use strict";
+  console.log("RapidFunnel Tracker: Script file executing...");
 
   // --- Utility Functions ---
 
