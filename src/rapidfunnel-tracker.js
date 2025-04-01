@@ -35,9 +35,168 @@
     }
   }
 
+  // Function to find specific input fields ANYWHERE on the page using common patterns
+  function findAllPageInputs() {
+    const fields = {
+      firstNameInput: null,
+      lastNameInput: null,
+      nameInput: null, // For combined name fields
+      emailInput: null,
+      phoneInput: null,
+    };
+
+    // Prioritize specific types first across the whole document
+    fields.emailInput = document.querySelector('input[type="email"]');
+    fields.phoneInput = document.querySelector('input[type="tel"]');
+
+    // Regex patterns for common names (case-insensitive)
+    const patterns = {
+      firstName: [
+        /first.?name/i,
+        /fname/i,
+        /first_name/i,
+        /first-name/i,
+        /firstname/i,
+      ],
+      lastName: [
+        /last.?name/i,
+        /lname/i,
+        /surname/i,
+        /last_name/i,
+        /last-name/i,
+      ],
+      name: [/^name$/i, /full.?name/i, /your.?name/i], // Combined name
+      email: [/e.?mail/i], // Check if type="email" wasn't found
+      phone: [/phone/i, /mobile/i, /contact.?number/i], // Check if type="tel" wasn't found
+    };
+
+    const attrs = ["id", "name", "class", "placeholder", "aria-label"];
+    const foundElements = new Set(); // Keep track of elements already assigned
+
+    // Get all potentially relevant inputs from the entire page
+    const allInputs = document.querySelectorAll(
+      'input[type="text"], input[type="email"], input[type="tel"], input[type="hidden"], textarea'
+    ); // Include textarea
+
+    // Find fields using patterns by checking all inputs on the page
+    for (const fieldKey in patterns) {
+      const inputKey = `${fieldKey}Input`; // e.g., firstNameInput
+      // Skip if already found (e.g., by type), unless it's email/phone (might find better match)
+      if (fields[inputKey] && fieldKey !== "email" && fieldKey !== "phone")
+        continue;
+
+      patterns[fieldKey].some((regex) => {
+        return Array.from(allInputs).some((input) => {
+          // Skip if element already used for another field
+          if (foundElements.has(input)) return false;
+
+          return attrs.some((attr) => {
+            const value = input.getAttribute(attr);
+            if (value && regex.test(value)) {
+              // If email/phone found by type initially, but we find another match,
+              // check if the new match isn't the one already found by type.
+              if (
+                (fieldKey === "email" && fields.emailInput === input) ||
+                (fieldKey === "phone" && fields.phoneInput === input)
+              ) {
+                return false; // Already assigned via type, don't re-assign based on name
+              }
+
+              fields[inputKey] = input;
+              foundElements.add(input); // Mark element as used
+              return true; // Stop checking attrs and inputs for this pattern
+            }
+            return false;
+          });
+        });
+      });
+    }
+
+    // Condition for tracking: Must have at least email OR phone input identified
+    const canTrack = !!(fields.emailInput || fields.phoneInput);
+
+    if (!canTrack) {
+      console.log(
+        "Could not find trackable inputs (email or phone) anywhere on the page."
+      );
+      return null; // Indicate cannot track
+    }
+
+    console.log("Identified potential contact inputs on the page:", fields);
+    return fields; // Return found fields
+  }
+
+  // Function to send form data (collected from page) to the API
+  // NOTE: Removed redirect logic from this function.
+  async function submitContactForm(
+    formDataString,
+    resourceId,
+    senderId
+    // removed formElement parameter as it's no longer directly relevant here
+  ) {
+    const apiUrl =
+      "https://my.rapidfunnel.com/landing/resource/create-custom-contact";
+
+    // Construct the body as URL-encoded parameters
+    const bodyParams = new URLSearchParams();
+    bodyParams.append("formData", formDataString);
+    bodyParams.append("resourceId", resourceId);
+    bodyParams.append("senderId", senderId);
+    // Determine sentFrom value
+    let sentFromValue = window.location.href;
+    if (sentFromValue.startsWith("file://")) {
+      sentFromValue = "customPage"; // Use 'customPage' for local files
+    }
+    bodyParams.append("sentFrom", sentFromValue);
+    const requestBody = bodyParams.toString();
+
+    console.log("Submitting page contact data to:", apiUrl);
+    console.log("Request Body (URL-encoded):", requestBody);
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          Accept: "application/json, text/javascript, */*; q=0.01",
+        },
+        body: requestBody,
+      });
+
+      if (!response.ok) {
+        let errorBody = "Could not read error response.";
+        try {
+          errorBody = await response.json();
+        } catch (e) {
+          /* Ignore */
+        }
+        console.error(
+          `Contact data submission failed: ${response.status} ${response.statusText}`,
+          errorBody
+        );
+        return null; // Indicate failure
+      }
+      const responseData = await response.json();
+      console.log("Contact data submitted successfully:", responseData);
+      const newContactId = responseData.contactId || null;
+      if (!newContactId || newContactId <= 0) {
+        console.error(
+          "Submission successful but no valid contactId received.",
+          responseData
+        );
+        return null; // Indicate invalid contactId
+      }
+      // ** Redirect logic removed - to be handled by the caller **
+      return newContactId; // Return the new ID on success
+    } catch (error) {
+      console.error("Error submitting contact data:", error);
+      return null; // Indicate failure
+    }
+  }
+
   // --- Feature Initialization Functions ---
 
-  // Initialize CTA Button Tracking
+  // Initialize CTA Button Tracking (Now handles submit buttons too)
   function initializeCtaTracking(params) {
     // --- CTA-specific Helper Functions ---
 
@@ -137,7 +296,7 @@
 
     // --- CTA Initialization Logic ---
     const pageName = window.rapidFunnelPageName || window.location.pathname;
-    const trackableElements = document.querySelectorAll("a, button"); // Select ALL links and buttons
+    const trackableElements = document.querySelectorAll("a, button");
 
     if (trackableElements.length === 0) {
       console.log("No trackable links or buttons found.");
@@ -150,62 +309,243 @@
 
     trackableElements.forEach((element) => {
       element.addEventListener("click", async (event) => {
-        // Generate description for this element
         const ctaButtonLocation = generateCtaDescription(element);
         console.log(
           `Click detected on ${element.tagName}: "${ctaButtonLocation}"`
         );
 
-        // --- Prevent tracking form submit buttons as CTAs ---
-        if (element.tagName === "BUTTON") {
-          const parentForm = element.closest("form");
-          // Check if it's inside a form AND is type="submit" or default type
-          if (
-            parentForm &&
-            (element.type === "submit" || !element.hasAttribute("type"))
-          ) {
-            console.log(
-              "Ignoring click on form submit button for CTA tracking."
-            );
-            // Allow default behavior (which might trigger form submission)
-            return;
-          }
-        }
-        // --------------------------------------------------
-
-        // Skip if userId is missing (required for notification)
-        if (!params.userId) {
-          console.warn("Skipping CTA notification: Missing userId.");
-          // Allow default behavior to proceed (unless prevented below for links)
+        // Skip if essential params missing (userId needed for both CTA and Submit)
+        if (!params.userId || !params.resourceId) {
+          console.warn(
+            "Skipping action: Missing userId or resourceId in URL params."
+          );
           return;
         }
 
-        // Prepare base payload
-        let notificationPayload = {
-          legacyUserId: Number(params.userId),
-          contactFirstName: "N/A",
-          contactLastName: "N/A",
-          contactPhoneNumber: "N/A",
-          contactEmail: "N/A",
-          ctaLocation: ctaButtonLocation,
-          ctaPageName: pageName,
-        };
+        // --- Handle Buttons ---
+        if (element.tagName === "BUTTON") {
+          const isSubmitButton =
+            element.type === "submit" ||
+            (!element.hasAttribute("type") && element.closest("form"));
 
-        // Handle links (<a>) vs buttons (<button>)
-        if (element.tagName === "A") {
+          // --- Submit Button Logic ---
+          if (isSubmitButton) {
+            console.log("[Submit Button] Click detected.");
+            event.preventDefault(); // Prevent default form submission
+            console.log("[Submit Button] Default action prevented.");
+
+            const identifiedInputs = findAllPageInputs(); // Scan the whole page
+
+            if (identifiedInputs) {
+              console.log("[Submit Button] Found trackable inputs on page.");
+              const {
+                firstNameInput,
+                lastNameInput,
+                nameInput,
+                emailInput,
+                phoneInput,
+              } = identifiedInputs;
+
+              // Validation
+              const emailValue = emailInput?.value?.trim();
+              const phoneValue = phoneInput?.value?.trim();
+
+              if (!emailValue && !phoneValue) {
+                console.warn(
+                  "[Submit Button] Submission stopped: Missing both email and phone value on page."
+                );
+                return; // Don't disable/submit if basic validation fails
+              }
+              if (emailValue && !/\S+@\S+\.\S+/.test(emailValue)) {
+                console.warn(
+                  "[Submit Button] Submission stopped: Invalid email format."
+                );
+                return; // Don't disable/submit
+              }
+
+              // Construct Payload
+              let firstName = "";
+              let lastName = "";
+              if (firstNameInput?.value && lastNameInput?.value) {
+                firstName = firstNameInput.value.trim();
+                lastName = lastNameInput.value.trim();
+              } else if (nameInput?.value) {
+                const nameParts = nameInput.value.trim().split(/\s+/);
+                firstName = nameParts.shift() || "";
+                lastName = nameParts.join(" ");
+              } else if (firstNameInput?.value) {
+                firstName = firstNameInput.value.trim();
+              } else if (lastNameInput?.value) {
+                firstName = lastNameInput.value.trim();
+              }
+
+              const payload = {};
+              if (firstName) payload.firstName = firstName;
+              if (lastName) payload.lastName = lastName;
+              if (emailValue) payload.email = emailValue;
+              if (phoneValue) payload.phone = phoneValue;
+              payload.campaign = window.rapidFunnelCampaignId || 0;
+              payload.contactTag = window.rapidFunnelLabelId || 0;
+              const formDataString = new URLSearchParams(payload).toString();
+
+              const resourceId = Number(params.resourceId);
+              const senderId = Number(params.userId);
+
+              // Disable button before API call
+              element.disabled = true;
+              console.log("[Submit Button] Disabled.");
+
+              // Call the contact submission helper
+              const newContactId = await submitContactForm(
+                formDataString,
+                resourceId,
+                senderId
+              );
+
+              // Handle redirect OR re-enable button
+              const redirectUrlAttr = element.getAttribute("data-redirect");
+              let redirected = false;
+              if (newContactId && redirectUrlAttr) {
+                console.log(
+                  "[Submit Button] Redirect URL found on button:",
+                  redirectUrlAttr
+                );
+                try {
+                  const redirectUrl = new URL(
+                    redirectUrlAttr,
+                    window.location.origin
+                  );
+                  redirectUrl.searchParams.set("userId", String(senderId));
+                  redirectUrl.searchParams.set(
+                    "resourceId",
+                    String(resourceId)
+                  );
+                  redirectUrl.searchParams.set(
+                    "contactId",
+                    String(newContactId)
+                  );
+                  console.log(
+                    "[Submit Button] Redirecting to:",
+                    redirectUrl.toString()
+                  );
+                  window.location.href = redirectUrl.toString();
+                  redirected = true; // Set flag to prevent re-enabling
+                } catch (urlError) {
+                  console.error(
+                    "[Submit Button] Error constructing redirect URL:",
+                    urlError
+                  );
+                  // Proceed to re-enable button below if redirect failed
+                }
+              } else if (newContactId) {
+                console.log(
+                  "[Submit Button] Submission successful, but no data-redirect found on button. Staying on page."
+                );
+                // Will re-enable below
+              } else {
+                console.warn(
+                  "[Submit Button] Submission failed or returned invalid contactId."
+                );
+                // Will re-enable below
+              }
+
+              // Re-enable button if not redirected
+              if (!redirected) {
+                console.log("[Submit Button] Re-enabling button.");
+                element.disabled = false;
+              }
+            } else {
+              console.warn(
+                "[Submit Button] Clicked, but no trackable inputs (email/phone) found on the page. No action taken."
+              );
+              // Do nothing further, default was already prevented
+            }
+
+            // --- Standard CTA Button Logic ---
+          } else {
+            console.log("[CTA Button] Click detected.");
+            // Prepare base payload for CTA notification
+            let notificationPayload = {
+              legacyUserId: Number(params.userId),
+              contactFirstName: "N/A", // Default values
+              contactLastName: "N/A",
+              contactPhoneNumber: "N/A",
+              contactEmail: "N/A",
+              ctaLocation: ctaButtonLocation,
+              ctaPageName: pageName,
+            };
+
+            // Attempt to fetch contact details ONLY if contactId exists (standard CTA behavior)
+            if (params.contactId) {
+              const contactDetails = await getContactDetails(params.contactId);
+              if (contactDetails) {
+                notificationPayload.contactFirstName =
+                  contactDetails.firstName || "N/A";
+                notificationPayload.contactLastName =
+                  contactDetails.lastName || "N/A";
+                notificationPayload.contactPhoneNumber =
+                  contactDetails.phone || "N/A";
+                notificationPayload.contactEmail =
+                  contactDetails.email || "N/A";
+              } else {
+                notificationPayload.contactFirstName =
+                  "System failed to retrieve";
+                notificationPayload.contactLastName = `Contact ID: ${params.contactId}`;
+              }
+            } else {
+              notificationPayload.contactFirstName = "No contact ID found";
+            }
+
+            // Send CTA notification (don't wait for it unless redirecting)
+            const notificationPromise =
+              sendCtaNotification(notificationPayload);
+
+            // Check for custom redirect on the button itself
+            const redirectUrl = element.getAttribute("data-href");
+            const target = element.getAttribute("data-target") || "_self";
+
+            if (redirectUrl) {
+              console.log(
+                "[CTA Button] Found data-href, will redirect after notification attempt."
+              );
+              // Wait for notification attempt before redirecting
+              try {
+                await notificationPromise;
+              } catch (e) {
+                /* Ignore notification error */
+              }
+              handleRedirect(redirectUrl, target);
+            } else {
+              console.log(
+                "[CTA Button] No data-href found. Allowing default button action (if any) after notification attempt."
+              );
+              // Allow default button action (if any) to proceed. Do NOT preventDefault.
+            }
+          }
+
+          // --- Handle Links ---
+        } else if (element.tagName === "A") {
+          console.log("[CTA Link] Click detected.");
           event.preventDefault(); // Prevent immediate navigation for links
-          console.log("[CTA Link] Event prevented.");
+          console.log("[CTA Link] Default navigation prevented.");
+
           const redirectUrl = element.getAttribute("href");
           const target = element.getAttribute("target") || "_self";
 
+          // Prepare base payload
+          let notificationPayload = {
+            legacyUserId: Number(params.userId),
+            contactFirstName: "N/A",
+            contactLastName: "N/A",
+            contactPhoneNumber: "N/A",
+            contactEmail: "N/A",
+            ctaLocation: ctaButtonLocation,
+            ctaPageName: pageName,
+          };
+
           // Fetch contact details if contactId exists
           if (params.contactId) {
-            console.log("[CTA Link] Before await getContactDetails.");
-            const contactDetails = await getContactDetails(params.contactId); // Wait here before sending notification
-            console.log(
-              "[CTA Link] After await getContactDetails. Details:",
-              contactDetails
-            );
+            const contactDetails = await getContactDetails(params.contactId);
             if (contactDetails) {
               notificationPayload.contactFirstName =
                 contactDetails.firstName || "N/A";
@@ -221,48 +561,22 @@
             }
           } else {
             notificationPayload.contactFirstName = "No contact ID found";
-            console.log("[CTA Link] No contactId to fetch.");
           }
 
           // Attempt notification, then redirect regardless
           try {
-            console.log("[CTA Link] Before await sendCtaNotification.");
+            console.log("[CTA Link] Sending notification...");
             await sendCtaNotification(notificationPayload);
-            console.log("[CTA Link] After await sendCtaNotification.");
+            console.log("[CTA Link] Notification sent (or attempt finished).");
           } catch (error) {
             console.error(
-              "[CTA Link] Notification sending failed (handled).",
+              "[CTA Link] Notification sending failed (error caught).",
               error
             );
           } finally {
-            console.log(
-              "[CTA Link] Inside finally block, before handleRedirect."
-            );
+            console.log("[CTA Link] Proceeding to redirect.");
             handleRedirect(redirectUrl, target);
-            console.log(
-              "[CTA Link] Inside finally block, after handleRedirect call."
-            );
           }
-        } else if (element.tagName === "BUTTON") {
-          // For buttons, send notification but DO NOT prevent default behavior
-          // (unless we want to handle custom redirection via data-href)
-          sendCtaNotification(notificationPayload) // Send async, don't wait
-            .then(() => {
-              // Optional: Check for custom redirect on button after notification attempt
-              const redirectUrl = element.getAttribute("data-href");
-              const target = element.getAttribute("data-target"); // Optional target for button redirect
-              if (redirectUrl) {
-                console.log(
-                  "Handling custom redirect for button:",
-                  redirectUrl
-                );
-                handleRedirect(redirectUrl, target || "_self");
-              }
-            })
-            .catch((error) => {
-              console.error("Notification sending failed (button click).");
-            });
-          // Allow button's default action (e.g., form submit) to proceed
         }
       }); // End event listener
     }); // End forEach
@@ -386,343 +700,6 @@
     );
   }
 
-  // Initialize Form Tracking
-  function initializeFormTracking(params) {
-    // --- Form-specific Helper Functions ---
-
-    // Function to find specific input fields within a form using common patterns
-    function findFormFields(form) {
-      const fields = {
-        firstNameInput: null,
-        lastNameInput: null,
-        nameInput: null, // For combined name fields
-        emailInput: null,
-        phoneInput: null,
-      };
-
-      // Prioritize specific types first
-      fields.emailInput = form.querySelector('input[type="email"]');
-      fields.phoneInput = form.querySelector('input[type="tel"]');
-
-      // Regex patterns for common names (case-insensitive)
-      const patterns = {
-        firstName: [
-          /first.?name/i,
-          /fname/i,
-          /first_name/i,
-          /first-name/i,
-          /firstname/i,
-        ],
-        lastName: [
-          /last.?name/i,
-          /lname/i,
-          /surname/i,
-          /last_name/i,
-          /last-name/i,
-        ],
-        name: [/^name$/i, /full.?name/i, /your.?name/i], // Combined name
-        email: [/e.?mail/i], // Check if type="email" wasn't found
-        phone: [/phone/i, /mobile/i, /contact.?number/i], // Check if type="tel" wasn't found
-      };
-
-      const attrs = ["id", "name", "class", "placeholder", "aria-label"];
-      const foundElements = new Set(); // Keep track of elements already assigned
-
-      // Find fields using patterns
-      for (const fieldKey in patterns) {
-        const inputKey = `${fieldKey}Input`; // e.g., firstNameInput
-        // Skip if already found (e.g., by type), unless it's email/phone (might find better match)
-        if (fields[inputKey] && fieldKey !== "email" && fieldKey !== "phone")
-          continue;
-
-        patterns[fieldKey].some((regex) => {
-          return Array.from(form.elements).some((input) => {
-            // Skip if element already used for another field
-            if (foundElements.has(input)) return false;
-            // Only check relevant input types
-            if (
-              !["text", "email", "tel", "hidden"].includes(
-                input.type.toLowerCase()
-              )
-            )
-              return false;
-
-            return attrs.some((attr) => {
-              const value = input.getAttribute(attr);
-              if (value && regex.test(value)) {
-                // If email/phone found by type initially, but we find another match,
-                // check if the new match isn't the one already found by type.
-                // This prioritizes specific name matches over generic type matches if names conflict.
-                if (
-                  (fieldKey === "email" && fields.emailInput === input) ||
-                  (fieldKey === "phone" && fields.phoneInput === input)
-                ) {
-                  return false; // Already assigned via type, don't re-assign based on name
-                }
-
-                fields[inputKey] = input;
-                foundElements.add(input); // Mark element as used
-                // console.log(`Found ${fieldKey} match:`, input, `via attribute ${attr}`);
-                return true; // Stop checking attrs and inputs for this pattern
-              }
-              return false;
-            });
-          });
-        });
-      }
-
-      // Condition for tracking: Must have at least email OR phone
-      const canTrack = !!(fields.emailInput || fields.phoneInput);
-
-      if (!canTrack) {
-        console.log(
-          "Form cannot be tracked (missing email and phone): ",
-          form.id || "Unnamed"
-        );
-        return null; // Indicate cannot track this form
-      }
-
-      console.log(
-        "Identified potential contact fields in form:",
-        form.id || "Unnamed",
-        fields
-      );
-      return fields; // Return found fields (even if incomplete)
-    }
-
-    // Function to send form data to the API (Aligned with Docs & Payload Image)
-    async function submitContactForm(
-      formDataString,
-      resourceId,
-      senderId,
-      formElement
-    ) {
-      const apiUrl =
-        "https://my.rapidfunnel.com/landing/resource/create-custom-contact";
-
-      // Construct the body as URL-encoded parameters
-      const bodyParams = new URLSearchParams();
-      bodyParams.append("formData", formDataString);
-      bodyParams.append("resourceId", resourceId);
-      bodyParams.append("senderId", senderId);
-      // Determine sentFrom value
-      let sentFromValue = window.location.href;
-      if (sentFromValue.startsWith("file://")) {
-        sentFromValue = "customPage"; // Use 'customPage' for local files
-      }
-      bodyParams.append("sentFrom", sentFromValue);
-      const requestBody = bodyParams.toString();
-
-      console.log("Submitting contact form data to:", apiUrl);
-      console.log("Request Body (URL-encoded):", requestBody);
-
-      try {
-        const response = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            // Set correct Content-Type for form data
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            // Keep Accept header as API likely responds with JSON
-            Accept: "application/json, text/javascript, */*; q=0.01",
-          },
-          body: requestBody, // Send the URL-encoded string directly
-        });
-
-        if (!response.ok) {
-          let errorBody = "Could not read error response.";
-          try {
-            errorBody = await response.json();
-          } catch (e) {
-            /* Ignore */
-          }
-          console.error(
-            `Contact form submission failed: ${response.status} ${response.statusText}`,
-            errorBody
-          );
-          return null;
-        }
-        const responseData = await response.json();
-        console.log("Contact form submitted successfully:", responseData);
-        const newContactId = responseData.contactId || null;
-        if (!newContactId || newContactId <= 0) {
-          console.error(
-            "Form submitted but no valid contactId received.",
-            responseData
-          );
-          return null;
-        }
-        let nextPageUrl = window.rapidFunnelNextPage;
-        if (!nextPageUrl) {
-          const submitContainer = document.getElementById(
-            "contactFormSubmitContainer"
-          );
-          if (submitContainer) {
-            nextPageUrl = submitContainer.getAttribute("data-redirect");
-          }
-        }
-        if (nextPageUrl) {
-          console.log("Redirect URL found:", nextPageUrl);
-          try {
-            const redirectUrl = new URL(nextPageUrl, window.location.origin);
-            redirectUrl.searchParams.set("userId", String(senderId));
-            redirectUrl.searchParams.set("resourceId", String(resourceId));
-            redirectUrl.searchParams.set("contactId", String(newContactId));
-            console.log("Redirecting to:", redirectUrl.toString());
-            window.location.href = redirectUrl.toString();
-          } catch (urlError) {
-            console.error("Error constructing redirect URL:", urlError);
-          }
-        } else {
-          console.log("No redirect URL specified. Staying on page.");
-        }
-        return newContactId; // Return the new ID on success
-      } catch (error) {
-        console.error("Error submitting contact form:", error);
-        return null;
-      }
-    }
-
-    // --- Form Initialization Logic ---
-
-    console.log(
-      "Initializing Form Tracking with event delegation (listening on document)."
-    );
-
-    document.addEventListener("submit", async (event) => {
-      // Check if the submission target is a form
-      if (!(event.target instanceof HTMLFormElement)) {
-        return; // Not a form submission, ignore
-      }
-
-      const form = event.target;
-      console.log(
-        "Submit event caught by delegate listener for form:",
-        form.id || "Unnamed form"
-      );
-
-      const identifiedFields = findFormFields(form);
-
-      // Only track if at least email OR phone was found
-      if (identifiedFields) {
-        console.log(
-          "Trackable form identified (has email/phone). Processing submission..."
-        );
-        event.preventDefault(); // Prevent default form submission ONLY for trackable forms
-        console.log(
-          "Default submission prevented for:",
-          form.id || "Unnamed form"
-        );
-
-        // Use the identified fields
-        const {
-          firstNameInput,
-          lastNameInput,
-          nameInput,
-          emailInput,
-          phoneInput,
-        } = identifiedFields;
-
-        // --- Validation (only validate found fields) ---
-        const emailValue = emailInput?.value?.trim();
-        const phoneValue = phoneInput?.value?.trim();
-
-        // Must have at least email or phone value to submit
-        if (!emailValue && !phoneValue) {
-          console.warn(
-            "Form submission stopped: Missing both email and phone value."
-          );
-          // Re-enable submit button if validation fails *before* API call attempt
-          const submitButton = form.querySelector('[type="submit"]');
-          if (submitButton) submitButton.disabled = false;
-          return;
-        }
-        // Validate email format if present
-        if (emailValue && !/\S+@\S+\.\S+/.test(emailValue)) {
-          console.warn("Form submission stopped: Invalid email format.");
-          // Re-enable submit button if validation fails *before* API call attempt
-          const submitButton = form.querySelector('[type="submit"]');
-          if (submitButton) submitButton.disabled = false;
-          return;
-        }
-        // Add other specific validations if needed (e.g., phone format)
-
-        // --- Construct Payload (using only available fields) ---
-        let firstName = "";
-        let lastName = "";
-
-        if (firstNameInput?.value && lastNameInput?.value) {
-          firstName = firstNameInput.value.trim();
-          lastName = lastNameInput.value.trim();
-        } else if (nameInput?.value) {
-          const nameParts = nameInput.value.trim().split(/\s+/);
-          firstName = nameParts.shift() || "";
-          lastName = nameParts.join(" ");
-        } else if (firstNameInput?.value) {
-          // Only first name found
-          firstName = firstNameInput.value.trim();
-        } else if (lastNameInput?.value) {
-          // Only last name found (use as first?)
-          firstName = lastNameInput.value.trim(); // Or should this be lastName?
-        }
-
-        const payload = {};
-        if (firstName) payload.firstName = firstName;
-        if (lastName) payload.lastName = lastName;
-        if (emailValue) payload.email = emailValue;
-        if (phoneValue) payload.phone = phoneValue;
-
-        // Get optional campaign/label IDs
-        payload.campaign = window.rapidFunnelCampaignId || 0;
-        payload.contactTag = window.rapidFunnelLabelId || 0;
-
-        // Construct the URL-encoded formData string
-        const formDataString = new URLSearchParams(payload).toString();
-
-        // Check for essential URL params
-        if (!params.userId || !params.resourceId) {
-          console.error(
-            "Cannot submit form: Missing userId or resourceId in URL."
-          );
-          // Don't re-enable button here as we didn't disable it yet
-          return;
-        }
-        const resourceId = Number(params.resourceId);
-        const senderId = Number(params.userId);
-
-        // Disable submit button *before* API call
-        const submitButton = form.querySelector('[type="submit"]');
-        if (submitButton) submitButton.disabled = true;
-
-        // Call the helper to submit the data
-        const newContactId = await submitContactForm(
-          formDataString,
-          resourceId,
-          senderId,
-          form
-        );
-
-        // Re-enable button ONLY if submission failed OR there's no redirect planned
-        if (
-          submitButton &&
-          (!newContactId ||
-            (!window.rapidFunnelNextPage &&
-              !document
-                .getElementById("contactFormSubmitContainer")
-                ?.getAttribute("data-redirect")))
-        ) {
-          console.log("Re-enabling submit button.");
-          submitButton.disabled = false;
-        }
-      } else {
-        console.log(
-          "Form submitted but not tracked (missing email/phone):",
-          form.id || "Unnamed form"
-        );
-        // Allow default submission for non-tracked forms
-      }
-    }); // End document event listener
-  }
-
   // --- Main Execution ---
 
   function runInitializationLogic() {
@@ -739,9 +716,8 @@
     }
 
     // Initialize all tracking features
-    initializeCtaTracking(params);
+    initializeCtaTracking(params); // Handles buttons (submit & CTA) and links
     initializeVideoTracking(params);
-    initializeFormTracking(params);
   }
 
   // Check if DOM is already ready or wait for body
