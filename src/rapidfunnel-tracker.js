@@ -588,6 +588,71 @@
 
     // --- Video-specific Helper Functions ---
 
+    // Function to load Wistia script if not already present
+    function loadWistiaScript() {
+      return new Promise((resolve, reject) => {
+        // Check if script is already loaded
+        if (typeof window._wq !== "undefined") {
+          console.log("Wistia API already loaded");
+          resolve();
+          return;
+        }
+
+        // Check if script is already in the process of loading
+        if (
+          document.querySelector(
+            'script[src*="wistia.com/assets/external/E-v1.js"]'
+          )
+        ) {
+          console.log("Wistia script already loading");
+          waitForWistiaAPI(resolve);
+          return;
+        }
+
+        // Load the script
+        console.log("Loading Wistia script...");
+        const script = document.createElement("script");
+        script.src = "https://fast.wistia.com/assets/external/E-v1.js";
+        script.async = true;
+
+        script.onload = () => {
+          console.log("Wistia script loaded successfully");
+          waitForWistiaAPI(resolve);
+        };
+
+        script.onerror = (error) => {
+          console.error("Failed to load Wistia script:", error);
+          reject(new Error("Failed to load Wistia script"));
+        };
+
+        document.head.appendChild(script);
+      });
+    }
+
+    // Function to check if Wistia API is available
+    function waitForWistiaAPI(callback) {
+      if (typeof window._wq !== "undefined") {
+        console.log("Wistia API already available");
+        callback();
+        return;
+      }
+
+      console.log("Waiting for Wistia API to load...");
+      let checkInterval = setInterval(() => {
+        if (typeof window._wq !== "undefined") {
+          clearInterval(checkInterval);
+          console.log("Wistia API loaded");
+          callback();
+        }
+      }, 100);
+
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        console.warn("Wistia API failed to load after 10 seconds");
+      }, 10000);
+    }
+
     // Function to send video play data to the API
     async function sendVideoPlayData(payload) {
       const apiUrl = "https://my.rapidfunnel.com/landing/resource/push-to-sqs";
@@ -620,12 +685,10 @@
             errorBody
           );
         } else {
-          // Response might be empty or JSON, attempt to parse if content-type suggests it
           const contentType = response.headers.get("content-type");
           if (contentType && contentType.indexOf("application/json") !== -1) {
             const responseData = await response.json();
             console.log("Video tracking submitted successfully:", responseData);
-            // Docs example checks response for truthiness, handle if needed
             if (!responseData) {
               console.warn("Video tracking API returned a falsy response.");
             }
@@ -642,62 +705,57 @@
 
     // --- Video Initialization Logic ---
 
-    // Check if Wistia Player API queue exists
-    if (typeof window._wq === "undefined") {
-      console.log(
-        "Wistia Player API (_wq) not found. Skipping video tracking initialization."
-      );
-      return;
-    }
+    // Load Wistia script and initialize tracking
+    loadWistiaScript()
+      .then(() => {
+        // Push handler onto Wistia queue
+        window._wq = window._wq || [];
+        window._wq.push({
+          _all: function (video) {
+            console.log("Wistia video found:", video.hashedId());
 
-    // Push handler onto Wistia queue
-    window._wq = window._wq || [];
-    window._wq.push({
-      _all: function (video) {
-        console.log("Wistia video found:", video.hashedId());
+            video.bind("play", () => {
+              console.log("Video play event detected for:", video.hashedId());
 
-        video.bind("play", () => {
-          console.log("Video play event detected for:", video.hashedId());
+              // Validate required params from URL (must be numeric based on docs example)
+              const { userId, resourceId, contactId } = params;
+              const isValidNumber = (val) => val && /^[0-9]+$/.test(val);
 
-          // Validate required params from URL (must be numeric based on docs example)
-          const { userId, resourceId, contactId } = params;
-          const isValidNumber = (val) => val && /^[0-9]+$/.test(val);
+              if (!isValidNumber(userId) || !isValidNumber(contactId)) {
+                console.warn(
+                  "Cannot track video play: Missing or non-numeric userId, resourceId, or contactId in URL params."
+                );
+                return;
+              }
 
-          if (
-            !isValidNumber(userId) ||
-            !isValidNumber(resourceId) ||
-            !isValidNumber(contactId)
-          ) {
-            console.warn(
-              "Cannot track video play: Missing or non-numeric userId, resourceId, or contactId in URL params."
-            );
-            return;
-          }
+              // Gather data for API payload
+              const webinarInput = document.getElementById("webinar"); // Optional field from docs
+              const payload = {
+                resourceId: resourceId,
+                contactId: contactId,
+                userId: userId,
+                percentageWatched: 0, // Initial play event
+                mediaHash: video.hashedId(),
+                duration: video.duration(),
+                visitorKey: video.visitorKey(),
+                eventKey: video.eventKey(),
+                delayProcess: 1,
+                webinar: webinarInput ? webinarInput.value : "", // Include if element exists
+              };
 
-          // Gather data for API payload
-          const webinarInput = document.getElementById("webinar"); // Optional field from docs
-          const payload = {
-            resourceId: resourceId,
-            contactId: contactId,
-            userId: userId,
-            percentageWatched: 0, // Initial play event
-            mediaHash: video.hashedId(),
-            duration: video.duration(),
-            visitorKey: video.visitorKey(),
-            eventKey: video.eventKey(),
-            delayProcess: 1,
-            webinar: webinarInput ? webinarInput.value : "", // Include if element exists
-          };
+              // Send data to the API
+              sendVideoPlayData(payload);
+            }); // End bind('play')
+          }, // End _all function
+        }); // End _wq.push
 
-          // Send data to the API
-          sendVideoPlayData(payload);
-        }); // End bind('play')
-      }, // End _all function
-    }); // End _wq.push
-
-    console.log(
-      "Wistia video tracking initialized. Waiting for play events..."
-    );
+        console.log(
+          "Wistia video tracking initialized. Waiting for play events..."
+        );
+      })
+      .catch((error) => {
+        console.error("Failed to initialize Wistia tracking:", error);
+      });
   }
 
   // --- Main Execution ---
