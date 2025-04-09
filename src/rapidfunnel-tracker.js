@@ -739,19 +739,38 @@
               console.log(
                 `Video ${video.hashedId()} ended, resetting progress tracking`
               );
+              // Send 100% watched on end if not already sent
+              if (lastReportedProgress < 100) {
+                const { userId, resourceId, contactId } = params;
+                const payload = {
+                  resourceId: resourceId,
+                  contactId: contactId,
+                  userId: userId,
+                  percentageWatched: 100,
+                  mediaHash: video.hashedId(),
+                  duration: video.duration(),
+                  visitorKey: video.visitorKey(),
+                  eventKey: video.eventKey(),
+                  delayProcess: 1,
+                  webinar: "",
+                };
+                sendVideoPlayData(payload);
+              }
               lastReportedProgress = 0;
               hasEnded = true;
             });
 
             video.bind("pause", () => {
               console.log(
-                `Video ${video.hashedId()} paused, resetting progress tracking`
+                `Video ${video.hashedId()} paused at ${Math.round(
+                  (video.time() / video.duration()) * 100
+                )}%`
               );
-              lastReportedProgress = 0;
+              // Don't reset progress on pause anymore
             });
 
             video.bind("play", () => {
-              // Reset ended flag when video starts playing again
+              // Only reset ended flag when video starts playing again
               hasEnded = false;
             });
 
@@ -763,14 +782,17 @@
 
               const currentTime = video.time();
               const duration = video.duration();
-              const percentageWatched = Math.round(
-                (currentTime / duration) * 100
-              );
 
-              // Don't track progress if we're past 100%
-              if (percentageWatched > 100) {
+              // Ensure we have valid numbers and duration is not zero
+              if (!duration || isNaN(currentTime) || isNaN(duration)) {
                 return;
               }
+
+              // Calculate percentage and ensure it's between 0 and 100
+              const percentageWatched = Math.min(
+                100,
+                Math.max(0, Math.round((currentTime / duration) * 100))
+              );
 
               // Check if we've reached a new milestone
               for (const milestone of progressMilestones) {
