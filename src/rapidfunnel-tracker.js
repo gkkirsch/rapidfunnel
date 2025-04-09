@@ -746,7 +746,7 @@
                   resourceId: resourceId,
                   contactId: contactId,
                   userId: userId,
-                  percentageWatched: 100,
+                  percentageWatched: 1, // 100% / 100 = 1
                   mediaHash: video.hashedId(),
                   duration: video.duration(),
                   visitorKey: video.visitorKey(),
@@ -809,7 +809,7 @@
                     resourceId: resourceId,
                     contactId: contactId,
                     userId: userId,
-                    percentageWatched: milestone,
+                    percentageWatched: milestone / 100, // Convert percentage to decimal (e.g., 75% becomes 0.75)
                     mediaHash: video.hashedId(),
                     duration: video.duration(),
                     visitorKey: video.visitorKey(),
