@@ -656,47 +656,31 @@
     // Function to send video play data to the API
     async function sendVideoPlayData(payload) {
       const apiUrl = "https://my.rapidfunnel.com/landing/resource/push-to-sqs";
-      const bodyParams = new URLSearchParams(payload);
-      const requestBody = bodyParams.toString();
-
-      console.log("Sending video play data to:", apiUrl);
-      console.log("Request Body (URL-encoded):", requestBody);
 
       try {
         const response = await fetch(apiUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            Accept: "application/json, text/javascript, */*; q=0.01",
-            "X-Requested-With": "XMLHttpRequest",
+            Accept: "application/json",
           },
-          body: requestBody,
+          body: new URLSearchParams(payload).toString(),
         });
 
         if (!response.ok) {
-          let errorBody = "Could not read error response.";
-          try {
-            errorBody = await response.json();
-          } catch (e) {
-            /* Ignore */
-          }
           console.error(
-            `Video tracking submission failed: ${response.status} ${response.statusText}`,
-            errorBody
+            `Video tracking submission failed: ${response.status} ${response.statusText}`
           );
+          return;
+        }
+
+        // Only try to parse as JSON if the response is JSON
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await response.json();
+          console.log("Video tracking submitted successfully:", data);
         } else {
-          const contentType = response.headers.get("content-type");
-          if (contentType && contentType.indexOf("application/json") !== -1) {
-            const responseData = await response.json();
-            console.log("Video tracking submitted successfully:", responseData);
-            if (!responseData) {
-              console.warn("Video tracking API returned a falsy response.");
-            }
-          } else {
-            console.log(
-              "Video tracking submitted successfully (non-JSON response)."
-            );
-          }
+          console.log("Video tracking submitted successfully");
         }
       } catch (error) {
         console.error("Error sending video tracking data:", error);
@@ -728,8 +712,6 @@
                 return;
               }
 
-              // Gather data for API payload
-              const webinarInput = document.getElementById("webinar"); // Optional field from docs
               const payload = {
                 resourceId: resourceId,
                 contactId: contactId,
@@ -740,12 +722,86 @@
                 visitorKey: video.visitorKey(),
                 eventKey: video.eventKey(),
                 delayProcess: 1,
-                webinar: webinarInput ? webinarInput.value : "", // Include if element exists
+                webinar: "",
               };
 
-              // Send data to the API
+              // Send initial play data
               sendVideoPlayData(payload);
-            }); // End bind('play')
+            });
+
+            // Track progress
+            const progressMilestones = [25, 50, 75, 100];
+            let lastReportedProgress = 0;
+            let hasEnded = false;
+
+            // Reset progress tracking when video ends or is paused
+            video.bind("end", () => {
+              console.log(
+                `Video ${video.hashedId()} ended, resetting progress tracking`
+              );
+              lastReportedProgress = 0;
+              hasEnded = true;
+            });
+
+            video.bind("pause", () => {
+              console.log(
+                `Video ${video.hashedId()} paused, resetting progress tracking`
+              );
+              lastReportedProgress = 0;
+            });
+
+            video.bind("play", () => {
+              // Reset ended flag when video starts playing again
+              hasEnded = false;
+            });
+
+            video.bind("timechange", () => {
+              // Don't track progress if video has ended
+              if (hasEnded) {
+                return;
+              }
+
+              const currentTime = video.time();
+              const duration = video.duration();
+              const percentageWatched = Math.round(
+                (currentTime / duration) * 100
+              );
+
+              // Don't track progress if we're past 100%
+              if (percentageWatched > 100) {
+                return;
+              }
+
+              // Check if we've reached a new milestone
+              for (const milestone of progressMilestones) {
+                if (
+                  percentageWatched >= milestone &&
+                  lastReportedProgress < milestone
+                ) {
+                  console.log(
+                    `Video ${video.hashedId()} reached ${milestone}% watched (current: ${percentageWatched}%, last reported: ${lastReportedProgress}%)`
+                  );
+
+                  const { userId, resourceId, contactId } = params;
+                  const payload = {
+                    resourceId: resourceId,
+                    contactId: contactId,
+                    userId: userId,
+                    percentageWatched: milestone,
+                    mediaHash: video.hashedId(),
+                    duration: video.duration(),
+                    visitorKey: video.visitorKey(),
+                    eventKey: video.eventKey(),
+                    delayProcess: 1,
+                    webinar: "",
+                  };
+
+                  sendVideoPlayData(payload);
+                  lastReportedProgress = milestone;
+                  break;
+                }
+              }
+            });
           }, // End _all function
         }); // End _wq.push
 
