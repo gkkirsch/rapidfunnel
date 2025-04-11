@@ -78,9 +78,9 @@
         updated = true;
       }
 
-      if (href.includes("[customer-id]")) {
+      if (href.includes("[contact-id]")) {
         // Replace with contactId if it exists, otherwise replace with empty string
-        href = href.replace(/\[customer-id\]/g, contactId || "");
+        href = href.replace(/\[contact-id\]/g, contactId || "");
         updated = true;
       }
 
@@ -101,9 +101,9 @@
         updated = true;
       }
 
-      if (src.includes("[customer-id]")) {
+      if (src.includes("[contact-id]")) {
         // Replace with contactId if it exists, otherwise replace with empty string
-        src = src.replace(/\[customer-id\]/g, contactId || "");
+        src = src.replace(/\[contact-id\]/g, contactId || "");
         updated = true;
       }
 
@@ -126,9 +126,9 @@
             updated = true;
           }
 
-          if (value.includes("[customer-id]")) {
+          if (value.includes("[contact-id]")) {
             // Replace with contactId if it exists, otherwise replace with empty string
-            value = value.replace(/\[customer-id\]/g, contactId || "");
+            value = value.replace(/\[contact-id\]/g, contactId || "");
             updated = true;
           }
 
