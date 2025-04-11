@@ -17,6 +17,130 @@
     };
   }
 
+  // Function to replace [user-id] in all URLs with the actual userId
+  function replaceUserIdInUrls(userId) {
+    if (!userId) {
+      console.log("No userId provided for URL replacement");
+      return;
+    }
+
+    console.log(`Replacing [user-id] in URLs with: ${userId}`);
+
+    // Find all elements with href attributes
+    const elementsWithHref = document.querySelectorAll("[href]");
+    elementsWithHref.forEach((el) => {
+      if (el.href.includes("[user-id]")) {
+        el.href = el.href.replace(/\[user-id\]/g, userId);
+        console.log(`Updated URL: ${el.href}`);
+      }
+    });
+
+    // Find all elements with src attributes (images, iframes, etc.)
+    const elementsWithSrc = document.querySelectorAll("[src]");
+    elementsWithSrc.forEach((el) => {
+      if (el.src.includes("[user-id]")) {
+        el.src = el.src.replace(/\[user-id\]/g, userId);
+        console.log(`Updated source: ${el.src}`);
+      }
+    });
+
+    // Find all elements with data attributes that might contain URLs
+    const allElements = document.querySelectorAll("*");
+    allElements.forEach((el) => {
+      Array.from(el.attributes).forEach((attr) => {
+        if (
+          attr.name.startsWith("data-") &&
+          typeof attr.value === "string" &&
+          attr.value.includes("[user-id]")
+        ) {
+          el.setAttribute(
+            attr.name,
+            attr.value.replace(/\[user-id\]/g, userId)
+          );
+          console.log(`Updated data attribute: ${attr.name}`);
+        }
+      });
+    });
+  }
+
+  // Function to replace URL placeholders with actual values
+  function replaceUrlPlaceholders(params) {
+    const { userId, contactId } = params;
+
+    // Find all elements with href attributes
+    const elementsWithHref = document.querySelectorAll("[href]");
+    elementsWithHref.forEach((el) => {
+      let href = el.href;
+      let updated = false;
+
+      if (userId && href.includes("[user-id]")) {
+        href = href.replace(/\[user-id\]/g, userId);
+        updated = true;
+      }
+
+      if (href.includes("[customer-id]")) {
+        // Replace with contactId if it exists, otherwise replace with empty string
+        href = href.replace(/\[customer-id\]/g, contactId || "");
+        updated = true;
+      }
+
+      if (updated) {
+        el.href = href;
+        console.log(`Updated URL: ${el.href}`);
+      }
+    });
+
+    // Find all elements with src attributes (images, iframes, etc.)
+    const elementsWithSrc = document.querySelectorAll("[src]");
+    elementsWithSrc.forEach((el) => {
+      let src = el.src;
+      let updated = false;
+
+      if (userId && src.includes("[user-id]")) {
+        src = src.replace(/\[user-id\]/g, userId);
+        updated = true;
+      }
+
+      if (src.includes("[customer-id]")) {
+        // Replace with contactId if it exists, otherwise replace with empty string
+        src = src.replace(/\[customer-id\]/g, contactId || "");
+        updated = true;
+      }
+
+      if (updated) {
+        el.src = src;
+        console.log(`Updated source: ${el.src}`);
+      }
+    });
+
+    // Find all elements with data attributes that might contain URLs
+    const allElements = document.querySelectorAll("*");
+    allElements.forEach((el) => {
+      Array.from(el.attributes).forEach((attr) => {
+        if (attr.name.startsWith("data-") && typeof attr.value === "string") {
+          let value = attr.value;
+          let updated = false;
+
+          if (userId && value.includes("[user-id]")) {
+            value = value.replace(/\[user-id\]/g, userId);
+            updated = true;
+          }
+
+          if (value.includes("[customer-id]")) {
+            // Replace with contactId if it exists, otherwise replace with empty string
+            value = value.replace(/\[customer-id\]/g, contactId || "");
+            updated = true;
+          }
+
+          if (updated) {
+            el.setAttribute(attr.name, value);
+            console.log(`Updated data attribute: ${attr.name}`);
+          }
+        }
+      });
+    });
+  }
+
   // Function to handle redirection (used by CTA, potentially others)
   function handleRedirect(url, target) {
     if (url) {
@@ -841,19 +965,35 @@
   function runInitializationLogic() {
     console.log("Running initialization logic...");
     const params = getUrlParams();
-    console.log("RapidFunnel Tracker Initialized. Params:", params);
+    console.log("URL Parameters:", params);
 
-    // Basic check for essential params needed for most tracking
-    if (!params.userId || !params.resourceId) {
-      console.warn(
-        "RapidFunnel Tracker: userId or resourceId missing from URL parameters. Tracking might be limited."
-      );
-      // Continue initialization even if params are missing, features might handle this
+    // Replace URL placeholders with the actual values
+    replaceUrlPlaceholders(params);
+
+    try {
+      initializeCtaTracking(params);
+    } catch (error) {
+      console.error("Failed to initialize CTA tracking:", error);
     }
 
-    // Initialize all tracking features
-    initializeCtaTracking(params); // Handles buttons (submit & CTA) and links
-    initializeVideoTracking(params);
+    try {
+      initializeVideoTracking(params);
+    } catch (error) {
+      console.error("Failed to initialize video tracking:", error);
+    }
+
+    // We also want to ensure form tracking works if contact already exists
+    try {
+      // If a contactId is in params, we're in a follow-up view where contact exists
+      if (params.contactId) {
+        console.log(
+          "Contact ID found in URL, ensuring form buttons track as CTAs.",
+          params.contactId
+        );
+      }
+    } catch (error) {
+      console.error("Error handling form with existing contact:", error);
+    }
   }
 
   // Check if DOM is already ready or wait for body

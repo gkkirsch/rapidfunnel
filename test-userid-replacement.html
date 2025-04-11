@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Placeholder Replacement Test</title>
+    <script src="src/rapidfunnel-tracker.js" defer></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .section { margin-bottom: 30px; border: 1px solid #ccc; padding: 15px; border-radius: 8px; }
+        h2 { margin-top: 0; }
+        .result { color: green; font-weight: bold; }
+        .warning { color: orange; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>URL Placeholder Replacement Test</h1>
+    <p>Test scenarios:</p>
+    <ul>
+        <li>Complete parameters: <code>?userId=123&resourceId=456&contactId=789</code></li>
+        <li>Missing contactId: <code>?userId=123&resourceId=456</code> (should replace [customer-id] with empty string)</li>
+    </ul>
+
+    <div class="section">
+        <h2>Link Elements (href attribute)</h2>
+        <a href="https://example.com/profile/[user-id]/dashboard" id="link1">Profile Dashboard</a>
+        <br><br>
+        <a href="https://api.example.com/users/[user-id]/data?param=value" id="link2">User Data API</a>
+        <br><br>
+        <a href="https://example.com/multiple/[user-id]/paths/[user-id]" id="link3">Multiple replacements</a>
+        <br><br>
+        <a href="https://example.com/customer/[customer-id]/profile" id="link4">Customer Profile</a>
+        <br><br>
+        <a href="https://example.com/dashboard/[user-id]/customers/[customer-id]" id="link5">Mixed Placeholders</a>
+    </div>
+
+    <div class="section">
+        <h2>Image Elements (src attribute)</h2>
+        <img src="https://example.com/avatars/[user-id].jpg" alt="User Avatar" width="100" id="img1">
+        <br><br>
+        <img src="https://example.com/customers/[customer-id]/photo.jpg" alt="Customer Photo" width="100" id="img2">
+    </div>
+
+    <div class="section">
+        <h2>Data Attributes</h2>
+        <div data-profile-url="https://example.com/api/[user-id]/profile" id="data1">Data attribute with user URL</div>
+        <br><br>
+        <div data-customer-url="https://example.com/api/customers/[customer-id]" id="data2">Data attribute with customer URL</div>
+        <br><br>
+        <div data-mixed-url="https://example.com/api/[user-id]/customers/[customer-id]" id="data3">Data attribute with mixed URL</div>
+    </div>
+
+    <div class="section">
+        <h2>Results (Check Console)</h2>
+        <div id="results">
+            <p>Current URL Parameters:</p>
+            <pre id="params-display"></pre>
+            <p>Replacements:</p>
+            <ul id="replacement-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        // Add a simple function to display the results after the tracker has run
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                // Display URL params
+                const urlParams = new URLSearchParams(window.location.search);
+                const userId = urlParams.get('userId');
+                const contactId = urlParams.get('contactId');
+                document.getElementById('params-display').textContent = JSON.stringify({
+                    userId: userId,
+                    resourceId: urlParams.get('resourceId'),
+                    contactId: contactId
+                }, null, 2);
+
+                // Check replacements
+                const replacementList = document.getElementById('replacement-list');
+                
+                function checkReplacement(id, type, attributeName) {
+                    const el = document.getElementById(id);
+                    let attribute, currentValue;
+                    
+                    switch(type) {
+                        case 'href':
+                            attribute = 'href';
+                            currentValue = el.href;
+                            break;
+                        case 'src': 
+                            attribute = 'src';
+                            currentValue = el.src;
+                            break;
+                        case 'data':
+                            attribute = attributeName || 'data-profile-url';
+                            currentValue = el.getAttribute(attribute);
+                            break;
+                    }
+                    
+                    const item = document.createElement('li');
+                    let successText = '';
+                    
+                    // Check for user-id replacement
+                    if (userId && !currentValue.includes('[user-id]') && el.outerHTML.includes('[user-id]')) {
+                        successText += `[user-id] replaced with ${userId}. `;
+                    }
+                    
+                    // Check for customer-id replacement
+                    const originalHTML = el.outerHTML;
+                    if (originalHTML.includes('[customer-id]')) {
+                        if (!currentValue.includes('[customer-id]')) {
+                            if (contactId) {
+                                successText += `[customer-id] replaced with ${contactId}. `;
+                            } else {
+                                successText += `<span class="warning">[customer-id] replaced with empty string (no contactId in URL).</span> `;
+                            }
+                        }
+                    }
+                    
+                    if (successText) {
+                        item.innerHTML = `<span class="result">Success!</span> ${id} (${attribute}): ${successText}`;
+                    } else {
+                        item.innerHTML = `Element ${id} (${attribute}): No replacement occurred or parameters not in URL`;
+                    }
+                    
+                    replacementList.appendChild(item);
+                }
+                
+                checkReplacement('link1', 'href');
+                checkReplacement('link2', 'href');
+                checkReplacement('link3', 'href');
+                checkReplacement('link4', 'href');
+                checkReplacement('link5', 'href');
+                checkReplacement('img1', 'src');
+                checkReplacement('img2', 'src');
+                checkReplacement('data1', 'data', 'data-profile-url');
+                checkReplacement('data2', 'data', 'data-customer-url');
+                checkReplacement('data3', 'data', 'data-mixed-url');
+            }, 1000); // Wait for the tracker script to complete
+        });
+    </script>
+
+</body>
+</html> 
